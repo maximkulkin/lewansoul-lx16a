@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""
+Terminal GUI for LewanSoul LX-16A servos
+
+Author: Maxim Kulkin
+Website: https://github.com/maximkulkin/lewansoul-lx16a
+"""
+
+from lewansoul_lx16a_terminal import main
+main()

@@ -18,7 +18,7 @@
     <number>0</number>
    </property>
    <item>
-    <layout class="QHBoxLayout" stretch="0,0,1">
+    <layout class="QHBoxLayout" stretch="0,0,0,1">
      <item>
       <widget class="QLabel" name="label">
        <property name="text">
@@ -33,6 +33,13 @@
          <width>300</width>
          <height>0</height>
         </size>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="refreshPortsButton">
+       <property name="text">
+        <string>Refresh</string>
        </property>
       </widget>
      </item>

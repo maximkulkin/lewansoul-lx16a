@@ -267,7 +267,7 @@ class Terminal(QWidget):
         self.selected_servo_id = False
         self.servo = None
 
-        self._available_ports = sorted(comports())
+        self._available_ports = []
 
         loadUi('resources/ServoTerminal.ui', self)
 
@@ -277,6 +277,7 @@ class Terminal(QWidget):
         self.configureMaxTemperatureButton.clicked.connect(self._configure_max_temperature)
 
         self.portCombo.currentTextChanged.connect(self._on_port_change)
+        self.refreshPortsButton.clicked.connect(self._refresh_ports)
         self.servoList.currentItemChanged.connect(lambda curItem, prevItem: self._on_servo_selected(curItem))
         self.scanServosButton.clicked.connect(self._scan_servos)
 
@@ -287,9 +288,6 @@ class Terminal(QWidget):
         self.positionSlider.valueChanged.connect(self._on_position_slider_change)
         self.positionEdit.valueChanged.connect(self._on_position_edit_change)
 
-        self.portCombo.addItem('')
-        self.portCombo.addItems([port.device for port in self._available_ports])
-
         self.motorOnButton.clicked.connect(self._on_motor_on_button)
         self.ledOnButton.clicked.connect(self._on_led_on_button)
         self.clearLedErrorsButton.clicked.connect(self._on_clear_led_errors_button)
@@ -299,9 +297,26 @@ class Terminal(QWidget):
         self._servoMonitorThread = None
 
         self.connectionGroup.setEnabled(False)
+
+        self._refresh_ports()
         self._on_servo_selected(None)
 
         self.show()
+
+    def _refresh_ports(self):
+        old_text = self.portCombo.currentText()
+
+        self._available_ports = sorted(comports())
+
+        self.portCombo.blockSignals(True)
+        self.portCombo.clear()
+        self.portCombo.addItem('')
+        self.portCombo.addItems([port.device for port in self._available_ports])
+        self.portCombo.setCurrentText(old_text)
+        self.portCombo.blockSignals(False)
+
+        if self.portCombo.currentText() != old_text:
+            self._on_port_change(self.portCombo.currentIndex())
 
     def _on_port_change(self, portIdx):
         self._connect_to_port(self.portCombo.currentText())

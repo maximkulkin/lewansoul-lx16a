@@ -77,7 +77,8 @@ class Servo(object):
     def __getattr__(self, name):
         attr = getattr(self._controller, name)
         if callable(attr):
-            return partial(attr, self.servo_id)
+            attr = partial(attr, self.servo_id)
+        return attr
 
 
 class ServoController(object):
@@ -108,19 +109,27 @@ class ServoController(object):
             return data
 
         while True:
-            data = read(1)
-            if data[0] != 0x55:
+            data = []
+            data += read(1)
+            if data[-1] != 0x55:
                 continue
-            data = read(1)
-            if data[0] != 0x55:
+            data += read(1)
+            if data[-1] != 0x55:
                 continue
-            sid = read(1)[0]
-            length = read(1)[0]
-            cmd = read(1)[0]
-            params = read(length-3) if length > 3 else []
-            checksum = read(1)[0]
+            data += read(3)
+            sid = data[2]
+            length = data[3]
+            cmd = data[4]
+            if length > 7:
+                LOGGER.error('Invalid length for packet %s', list(data))
+                continue
+
+            data += read(length-3) if length > 3 else []
+            params = data[5:]
+            data += read(1)
+            checksum = data[-1]
             if 255-(sid + length + cmd + sum(params)) % 256 != checksum:
-                LOGGER.error('Invalid checksum')
+                LOGGER.error('Invalid checksum for packet %s', list(data))
                 continue
 
             if cmd != command or (servo_id != SERVO_ID_ALL and sid != servo_id):
@@ -290,11 +299,10 @@ class ServoController(object):
     def led_off(self, servo_id):
         self._command(servo_id, SERVO_LED_CTRL_WRITE, 1)
 
-    def get_led_error(self, servo_id, timeout=None):
+    def get_led_errors(self, servo_id, timeout=None):
         response = self._query(servo_id, SERVO_LED_ERROR_READ, timeout=timeout)
         return response[2]
 
-    def set_led_error(self, servo_id, error):
+    def set_led_errors(self, servo_id, error):
         error = clamp(0, 7, error)
         self._command(servo_id, SERVO_LED_ERROR_WRITE, error)
-

@@ -8,10 +8,11 @@ Website: https://github.com/maximkulkin/lewansoul-lx16a
 
 import sys
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtWidgets import (QWidget, QApplication, QDialog, QListWidgetItem)
 from PyQt5.uic import loadUi as _loadUi
 
+from collections import namedtuple
 import pkg_resources
 import logging
 import serial
@@ -22,6 +23,16 @@ import lewansoul_lx16a
 def loadUi(path, widget):
     real_path = pkg_resources.resource_filename('lewansoul_lx16a_terminal', path)
     _loadUi(real_path, widget)
+
+
+ServoLimits = namedtuple('ServoLimits', [
+    'servo_id', 'position_limits', 'voltage_limits', 'max_temperature',
+])
+
+ServoState = namedtuple('ServoState', [
+    'servo_id', 'voltage', 'temperature',
+    'mode', 'position', 'speed', 'motor_on', 'led_on', 'led_errors',
+])
 
 
 class ConfigureIdDialog(QDialog):
@@ -112,6 +123,140 @@ class ConfigureMaxTemperatureDialog(QDialog):
         self.maxTemperatureEdit.setValue(value)
 
 
+class ServoScanThread(QThread):
+    servoFound = pyqtSignal(int)
+
+    def __init__(self, controller):
+        super(ServoScanThread, self).__init__()
+        self._controller = controller
+
+    def _servo_exists(self, id):
+        try:
+            servo_id = self._controller.get_servo_id(id, timeout=0.2)
+            return (servo_id == id)
+        except TimeoutError:
+            return False
+
+    def run(self):
+        for servoId in range(1, 10):
+            if self.isInterruptionRequested():
+                break
+
+            try:
+                if self._servo_exists(servoId):
+                    self.servoFound.emit(servoId)
+            except lewansoul_lx16a.TimeoutError:
+                pass
+
+            self.yieldCurrentThread()
+
+
+class GetServoLimitsThread(QThread):
+    servoLimitsUpdated = pyqtSignal(ServoLimits)
+    servoLimitsTimeout = pyqtSignal()
+
+    MAX_RETRIES = 5
+
+    def __init__(self, servo):
+        super(GetServoLimitsThread, self).__init__()
+        self._servo = servo
+
+    @property
+    def servo_id(self):
+        return self._servo.servo_id
+
+    def run(self):
+        try:
+            retries = 0
+            while True:
+                if self.isInterruptionRequested():
+                    return
+
+                try:
+                    position_limits = self._servo.get_position_limits()
+                    break
+                except lewansoul_lx16a.TimeoutError:
+                    retries += 1
+                    if retries >= self.MAX_RETRIES:
+                        raise
+                    self.sleep(1)
+
+            while True:
+                if self.isInterruptionRequested():
+                    return
+
+                try:
+                    voltage_limits = self._servo.get_voltage_limits()
+                    break
+                except lewansoul_lx16a.TimeoutError:
+                    retries += 1
+                    if retries >= self.MAX_RETRIES:
+                        raise
+                    self.sleep(1)
+
+            while True:
+                if self.isInterruptionRequested():
+                    return
+
+                try:
+                    max_temperature = self._servo.get_max_temperature_limit()
+                    break
+                except lewansoul_lx16a.TimeoutError:
+                    retries += 1
+                    if retries >= self.MAX_RETRIES:
+                        raise
+                    self.sleep(1)
+
+            self.servoLimitsUpdated.emit(ServoLimits(
+                servo_id=self.servo_id,
+                position_limits=position_limits,
+                voltage_limits=voltage_limits,
+                max_temperature=max_temperature,
+            ))
+        except lewansoul_lx16a.TimeoutError:
+            self.servoLimitsTimeout.emit()
+
+
+class ServoMonitorThread(QThread):
+    servoStateUpdated = pyqtSignal(ServoState)
+
+    def __init__(self, servo):
+        super(ServoMonitorThread, self).__init__()
+        self._servo = servo
+
+    def run(self):
+        while not self.isInterruptionRequested():
+            try:
+                voltage = self._servo.get_voltage()
+                temperature = self._servo.get_temperature()
+
+                mode = self._servo.get_mode()
+                if mode == 0:
+                    position, speed = self._servo.get_position(), 0
+                else:
+                    position, speed = 0, self._servo.get_motor_speed()
+
+                motor_on = self._servo.is_motor_on()
+                led_on = self._servo.is_led_on()
+                led_errors = self._servo.get_led_errors()
+
+                self.servoStateUpdated.emit(ServoState(
+                    servo_id=self._servo.servo_id,
+                    voltage=voltage,
+                    temperature=temperature,
+                    mode=mode,
+                    position=position,
+                    speed=speed,
+                    motor_on=motor_on,
+                    led_on=led_on,
+                    led_errors=led_errors,
+                ))
+            except lewansoul_lx16a.TimeoutError:
+                pass
+
+            self.sleep(1)
+
+
 class Terminal(QWidget):
     logger = logging.getLogger('lewansoul.terminal')
 
@@ -148,9 +293,9 @@ class Terminal(QWidget):
         self.motorOnButton.clicked.connect(self._on_motor_on_button)
         self.ledOnButton.clicked.connect(self._on_led_on_button)
 
-        self.servoPollTimer = QTimer()
-        self.servoPollTimer.setInterval(1000)
-        self.servoPollTimer.timeout.connect(self._refresh_servo_data)
+        self._servoScanThread = None
+        self._servoLimitsThread = None
+        self._servoMonitorThread = None
 
         self.connectionGroup.setEnabled(False)
         self._on_servo_selected(None)
@@ -179,23 +324,38 @@ class Terminal(QWidget):
                 self.logger.info('Connected to {}'.format(device))
             except serial.serialutil.SerialException as e:
                 self.logger.error('Failed to connect to port {}'.format(device))
+                QtGui.QMessageBox.critical(self, "Connection error", "Failed to connect to device")
 
     def _scan_servos(self):
-        if not self.connection:
+        if not self.controller:
             return
 
-        self.servoList.clear()
+        def scanStarted():
+            self.servoList.clear()
+            self.scanServosButton.setText('Stop Scan')
+            self.scanServosButton.setEnabled(True)
 
-        for servoId in range(1, 40):
-            try:
-                if not self._servo_exists(servoId):
-                    continue
+        def scanFinished():
+            self.scanServosButton.setText('Scan Servos')
+            self.scanServosButton.setEnabled(True)
+            self._servoScanThread = None
 
-                item = QListWidgetItem('Servo ID=%s' % servoId)
-                item.setData(Qt.UserRole, servoId)
-                self.servoList.addItem(item)
-            except lewansoul_lx16a.TimeoutError:
-                pass
+        def servoFound(servoId):
+            item = QListWidgetItem('Servo ID=%s' % servoId)
+            item.setData(Qt.UserRole, servoId)
+            self.servoList.addItem(item)
+
+        if not self._servoScanThread:
+            self._servoScanThread = ServoScanThread(self.controller)
+            self._servoScanThread.servoFound.connect(servoFound)
+            self._servoScanThread.started.connect(scanStarted)
+            self._servoScanThread.finished.connect(scanFinished)
+
+        self.scanServosButton.setEnabled(False)
+        if self._servoScanThread.isRunning():
+            self._servoScanThread.requestInterruption()
+        else:
+            self._servoScanThread.start()
 
     def _on_servo_selected(self, item):
         servo_id = None
@@ -206,15 +366,44 @@ class Terminal(QWidget):
             self.servo = self.controller.servo(servo_id)
             self.servoGroup.setEnabled(True)
 
-            self.servoIdLabel.setText(str(servo_id))
-            self.positionLimits.setText('%d .. %d' % self.servo.get_position_limits())
-            self.voltageLimits.setText('%d .. %d' % self.servo.get_voltage_limits())
-            self.maxTemperature.setText(str(self.servo.get_max_temperature_limit()))
+            def servo_limits_updated(details):
+                self.servoIdLabel.setText(str(details.servo_id))
+                self.positionLimits.setText('%d .. %d' % details.position_limits)
+                self.voltageLimits.setText('%d .. %d' % details.voltage_limits)
+                self.maxTemperature.setText(str(details.max_temperature))
 
-            self._refresh_servo_data()
-            self.servoPollTimer.start()
+                if self._servoMonitorThread:
+                    self._servoMonitorThread.requestInterruption()
+
+                self._servoMonitorThread = ServoMonitorThread(self.servo)
+                self._servoMonitorThread.servoStateUpdated.connect(self._update_servo_state)
+                self._servoMonitorThread.start()
+
+            def servo_limits_timeout():
+                self._on_servo_selected(None)
+                QtGui.QMessageBox.warning(self, "Timeout", "Timeout reading servo data")
+
+            if self._servoLimitsThread and self._servoLimitsThread.servo_id != servo_id:
+                self._servoLimitsThread.requestInterruption()
+                self._servoLimitsThread.wait()
+                self._servoLimitsThread = None
+
+            if self._servoLimitsThread is None:
+                self._servoLimitsThread = GetServoLimitsThread(self.servo)
+                self._servoLimitsThread.servoLimitsUpdated.connect(servo_limits_updated)
+                self._servoLimitsThread.servoLimitsTimeout.connect(servo_limits_timeout)
+                self._servoLimitsThread.start()
         else:
-            self.servoPollTimer.stop()
+            if self._servoMonitorThread:
+                self._servoMonitorThread.requestInterruption()
+                self._servoMonitorThread.wait()
+                self._servoMonitorThread = None
+
+            if self._servoLimitsThread:
+                self._servoLimitsThread.requestInterruption()
+                self._servoLimitsThread.wait()
+                self._servoLimitsThread = None
+
             self.servo = None
 
             self.servoIdLabel.setText('')
@@ -274,81 +463,108 @@ class Terminal(QWidget):
             self.maxTemperature.setText(str(dialog.maxTemperature))
 
     def _on_servo_motor_switch(self, value):
-        if value == 0:
-            self.servoOrMotorModeUi.setCurrentIndex(0)
-            self.servo.set_servo_mode()
-        else:
-            self.servoOrMotorModeUi.setCurrentIndex(1)
-            self.servo.set_motor_mode()
+        try:
+            if value == 0:
+                self.servoOrMotorModeUi.setCurrentIndex(0)
+                self.servo.set_servo_mode()
+            else:
+                self.servoOrMotorModeUi.setCurrentIndex(1)
+                self.servo.set_motor_mode()
+        except lewansoul_lx16a.TimeoutError:
+            QtGui.QMessageBox.critical(self, "Timeout", "Timeout changing motor mode")
 
     def _on_speed_slider_change(self, speed):
-        self.speedEdit.setValue(speed)
-        self.logger.info('Setting motor speed to %d' % speed)
-        self.servo.set_motor_mode(speed)
+        try:
+            self.speedEdit.setValue(speed)
+            self.logger.info('Setting motor speed to %d' % speed)
+            self.servo.set_motor_mode(speed)
+        except lewansoul_lx16a.TimeoutError:
+            QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating motor speed")
 
     def _on_speed_edit_change(self, speed):
-        self.speedSlider.setValue(speed)
-        self.logger.info('Setting motor speed to %d' % speed)
-        self.servo.set_motor_mode(speed)
+        try:
+            self.speedSlider.setValue(speed)
+            self.logger.info('Setting motor speed to %d' % speed)
+            self.servo.set_motor_mode(speed)
+        except lewansoul_lx16a.TimeoutError:
+            QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating motor speed")
 
     def _on_position_slider_change(self, position):
-        self.positionEdit.setValue(position)
-        self.logger.info('Setting servo position to %d' % position)
-        self.servo.move(position)
+        try:
+            self.positionEdit.setValue(position)
+            self.logger.info('Setting servo position to %d' % position)
+            self.servo.move(position)
+        except lewansoul_lx16a.TimeoutError:
+            QtGui.QMessageBox.critical(self, "Timeout", "Timeout setting servo position")
 
     def _on_position_edit_change(self, position):
-        self.positionSlider.setValue(position)
-        self.logger.info('Setting servo position to %d' % position)
-        self.servo.move(position)
+        try:
+            self.positionSlider.setValue(position)
+            self.logger.info('Setting servo position to %d' % position)
+            self.servo.move(position)
+        except lewansoul_lx16a.TimeoutError:
+            QtGui.QMessageBox.critical(self, "Timeout", "Timeout setting servo position")
 
     def _on_motor_on_button(self):
         if not self.servo:
             return
 
-        if self.servo.is_motor_on():
-            if self.servo.get_mode() == 0:
-                self.servo.motor_off()
+        try:
+            if self.servo.is_motor_on():
+                if self.servo.get_mode() == 0:
+                    self.servo.motor_off()
+                else:
+                    self.servo.set_motor_mode(0)
             else:
-                self.servo.set_motor_mode(0)
-        else:
-            if self.servo.get_mode() == 0:
-                self.servo.motor_on()
-            else:
-                self.servo.set_motor_mode(self.speedSlider.value())
+                if self.servo.get_mode() == 0:
+                    self.servo.motor_on()
+                else:
+                    self.servo.set_motor_mode(self.speedSlider.value())
+        except lewansoul_lx16a.TimeoutError:
+            QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating motor state")
 
     def _on_led_on_button(self):
         if not self.servo:
             return
 
-        if self.servo.is_led_on():
-            self.servo.led_off()
-            self.ledOnButton.setChecked(False)
-        else:
-            self.servo.led_on()
-            self.ledOnButton.setChecked(True)
+        try:
+            if self.servo.is_led_on():
+                self.servo.led_off()
+                self.ledOnButton.setChecked(False)
+            else:
+                self.servo.led_on()
+                self.ledOnButton.setChecked(True)
+        except lewansoul_lx16a.TimeoutError:
+            QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating LED state")
 
-    def _refresh_servo_data(self):
-        if not self.servo:
-            return
-
-        self.currentVoltage.setText('Voltage: %d' % self.servo.get_voltage())
-        self.currentTemperature.setText('Temperature: %d' % self.servo.get_temperature())
-        self.motorOnButton.setChecked(self.servo.is_motor_on())
-        self.ledOnButton.setChecked(self.servo.is_led_on())
+    def _update_servo_state(self, servo_state):
+        self.currentVoltage.setText('Voltage: %d' % servo_state.voltage)
+        self.currentTemperature.setText('Temperature: %d' % servo_state.temperature)
+        self.motorOnButton.setChecked(servo_state.motor_on)
+        self.ledOnButton.setChecked(servo_state.led_on)
+        # TODO: display led errors
 
         if self.servoOrMotorModeUi.currentIndex() == 0:
-            self.currentPosition.setText(str(self.servo.get_position()))
+            self.currentPosition.setText(str(servo_state.position))
         else:
-            self.currentSpeed.setText(str(self.servo.get_motor_speed()))
-
-    def _servo_exists(self, id):
-        try:
-            servo_id = self.controller.get_servo_id(id, timeout=0.1)
-            return (servo_id == id)
-        except TimeoutError:
-            return False
+            self.currentSpeed.setText(str(servo_state.speed))
 
     def closeEvent(self, event):
+        if self._servoScanThread:
+            self._servoScanThread.requestInterruption()
+            self._servoScanThread.wait()
+            self._servoScanThread = None
+
+        if self._servoLimitsThread:
+            self._servoLimitsThread.requestInterruption()
+            self._servoLimitsThread.wait()
+            self._servoLimitsThread = None
+
+        if self._servoMonitorThread:
+            self._servoMonitorThread.requestInterruption()
+            self._servoMonitorThread.wait()
+            self._servoMonitorThread = None
+
         if self.connection:
             self.connection.close()
 

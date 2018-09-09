@@ -292,6 +292,7 @@ class Terminal(QWidget):
 
         self.motorOnButton.clicked.connect(self._on_motor_on_button)
         self.ledOnButton.clicked.connect(self._on_led_on_button)
+        self.clearLedErrorsButton.clicked.connect(self._on_clear_led_errors_button)
 
         self._servoScanThread = None
         self._servoLimitsThread = None
@@ -537,12 +538,33 @@ class Terminal(QWidget):
         except lewansoul_lx16a.TimeoutError:
             QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating LED state")
 
+    def _on_clear_led_errors_button(self):
+        if not self.servo:
+            return
+
+        try:
+            self.servo.set_led_errors(0)
+        except lewansoul_lx16a.TimeoutError:
+            QtGui.QMessageBox.critical(self, "Timeout", "Timeout resetting LED errors")
+
     def _update_servo_state(self, servo_state):
         self.currentVoltage.setText('Voltage: %d' % servo_state.voltage)
         self.currentTemperature.setText('Temperature: %d' % servo_state.temperature)
         self.motorOnButton.setChecked(servo_state.motor_on)
         self.ledOnButton.setChecked(servo_state.led_on)
-        # TODO: display led errors
+        if servo_state.led_errors:
+            messages = []
+            if lewansoul_lx16a.SERVO_ERROR_OVER_TEMPERATURE | servo_state.led_errors:
+                messages.append('Overheating')
+            if lewansoul_lx16a.SERVO_ERROR_OVER_VOLTAGE | servo_state.led_errors:
+                messages.append('Voltage is out of limits')
+            if lewansoul_lx16a.SERVO_ERROR_LOCKED_ROTOR | servo_state.led_errors:
+                messages.append('Locked rotor')
+            self.ledErrors.setText('\n'.join(messages))
+            self.clearLedErrorsButton.setEnabled(True)
+        else:
+            self.ledErrors.setText('')
+            self.clearLedErrorsButton.setEnabled(False)
 
         if self.servoOrMotorModeUi.currentIndex() == 0:
             self.currentPosition.setText(str(servo_state.position))

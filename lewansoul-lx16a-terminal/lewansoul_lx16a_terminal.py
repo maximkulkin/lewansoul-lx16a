@@ -9,7 +9,7 @@ Website: https://github.com/maximkulkin/lewansoul-lx16a
 import sys
 
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtWidgets import (QWidget, QApplication, QDialog, QListWidgetItem)
+from PyQt5.QtWidgets import (QWidget, QApplication, QDialog, QMessageBox, QListWidgetItem)
 from PyQt5.uic import loadUi as _loadUi
 
 from collections import namedtuple
@@ -340,7 +340,7 @@ class Terminal(QWidget):
                 self.logger.info('Connected to {}'.format(device))
             except serial.serialutil.SerialException as e:
                 self.logger.error('Failed to connect to port {}'.format(device))
-                QtGui.QMessageBox.critical(self, "Connection error", "Failed to connect to device")
+                QMessageBox.critical(self, "Connection error", "Failed to connect to device")
 
     def _scan_servos(self):
         if not self.controller:
@@ -397,7 +397,7 @@ class Terminal(QWidget):
 
             def servo_limits_timeout():
                 self._on_servo_selected(None)
-                QtGui.QMessageBox.warning(self, "Timeout", "Timeout reading servo data")
+                QMessageBox.warning(self, "Timeout", "Timeout reading servo data")
 
             if self._servoLimitsThread and self._servoLimitsThread.servo_id != servo_id:
                 self._servoLimitsThread.requestInterruption()
@@ -487,7 +487,7 @@ class Terminal(QWidget):
                 self.servoOrMotorModeUi.setCurrentIndex(1)
                 self.servo.set_motor_mode()
         except lewansoul_lx16a.TimeoutError:
-            QtGui.QMessageBox.critical(self, "Timeout", "Timeout changing motor mode")
+            QMessageBox.critical(self, "Timeout", "Timeout changing motor mode")
 
     def _on_speed_slider_change(self, speed):
         try:
@@ -495,7 +495,7 @@ class Terminal(QWidget):
             self.logger.info('Setting motor speed to %d' % speed)
             self.servo.set_motor_mode(speed)
         except lewansoul_lx16a.TimeoutError:
-            QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating motor speed")
+            QMessageBox.critical(self, "Timeout", "Timeout updating motor speed")
 
     def _on_speed_edit_change(self, speed):
         try:
@@ -503,7 +503,7 @@ class Terminal(QWidget):
             self.logger.info('Setting motor speed to %d' % speed)
             self.servo.set_motor_mode(speed)
         except lewansoul_lx16a.TimeoutError:
-            QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating motor speed")
+            QMessageBox.critical(self, "Timeout", "Timeout updating motor speed")
 
     def _on_position_slider_change(self, position):
         try:
@@ -511,7 +511,7 @@ class Terminal(QWidget):
             self.logger.info('Setting servo position to %d' % position)
             self.servo.move(position)
         except lewansoul_lx16a.TimeoutError:
-            QtGui.QMessageBox.critical(self, "Timeout", "Timeout setting servo position")
+            QMessageBox.critical(self, "Timeout", "Timeout setting servo position")
 
     def _on_position_edit_change(self, position):
         try:
@@ -519,7 +519,7 @@ class Terminal(QWidget):
             self.logger.info('Setting servo position to %d' % position)
             self.servo.move(position)
         except lewansoul_lx16a.TimeoutError:
-            QtGui.QMessageBox.critical(self, "Timeout", "Timeout setting servo position")
+            QMessageBox.critical(self, "Timeout", "Timeout setting servo position")
 
     def _on_motor_on_button(self):
         if not self.servo:
@@ -537,7 +537,7 @@ class Terminal(QWidget):
                 else:
                     self.servo.set_motor_mode(self.speedSlider.value())
         except lewansoul_lx16a.TimeoutError:
-            QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating motor state")
+            QMessageBox.critical(self, "Timeout", "Timeout updating motor state")
 
     def _on_led_on_button(self):
         if not self.servo:
@@ -551,7 +551,7 @@ class Terminal(QWidget):
                 self.servo.led_on()
                 self.ledOnButton.setChecked(True)
         except lewansoul_lx16a.TimeoutError:
-            QtGui.QMessageBox.critical(self, "Timeout", "Timeout updating LED state")
+            QMessageBox.critical(self, "Timeout", "Timeout updating LED state")
 
     def _on_clear_led_errors_button(self):
         if not self.servo:
@@ -560,7 +560,7 @@ class Terminal(QWidget):
         try:
             self.servo.set_led_errors(0)
         except lewansoul_lx16a.TimeoutError:
-            QtGui.QMessageBox.critical(self, "Timeout", "Timeout resetting LED errors")
+            QMessageBox.critical(self, "Timeout", "Timeout resetting LED errors")
 
     def _update_servo_state(self, servo_state):
         self.currentVoltage.setText('Voltage: %d' % servo_state.voltage)

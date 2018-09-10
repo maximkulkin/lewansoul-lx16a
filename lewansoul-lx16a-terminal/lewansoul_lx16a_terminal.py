@@ -171,7 +171,7 @@ class ServoScanThread(QThread):
             return False
 
     def run(self):
-        for servoId in range(1, 10):
+        for servoId in range(1, 253):
             if self.isInterruptionRequested():
                 break
 

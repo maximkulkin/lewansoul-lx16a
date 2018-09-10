@@ -1,3 +1,13 @@
+__all__ = [
+    'ServoController',
+    'TimeoutError',
+
+    'SERVO_ERROR_OVER_TEMPERATURE',
+    'SERVO_ERROR_OVER_VOLTAGE',
+    'SERVO_ERROR_LOCKED_ROTOR',
+]
+
+
 from serial.serialutil import Timeout
 from functools import partial
 import threading

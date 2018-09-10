@@ -442,6 +442,9 @@
                  <property name="maximum">
                   <number>1000</number>
                  </property>
+                 <property name="keyboardTracking">
+                   <bool>false</bool>
+                 </property>
                 </widget>
                </item>
               </layout>
@@ -529,6 +532,9 @@
                  </property>
                  <property name="maximum">
                   <number>1000</number>
+                 </property>
+                 <property name="keyboardTracking">
+                   <bool>false</bool>
                  </property>
                 </widget>
                </item>

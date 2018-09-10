@@ -25,7 +25,7 @@ def loadUi(path, widget):
     _loadUi(real_path, widget)
 
 
-ServoLimits = namedtuple('ServoLimits', [
+ServoConfiguration = namedtuple('ServoConfiguration', [
     'servo_id', 'position_limits', 'voltage_limits', 'max_temperature',
 ])
 
@@ -151,14 +151,14 @@ class ServoScanThread(QThread):
             self.yieldCurrentThread()
 
 
-class GetServoLimitsThread(QThread):
-    servoLimitsUpdated = pyqtSignal(ServoLimits)
-    servoLimitsTimeout = pyqtSignal()
+class GetServoConfigurationThread(QThread):
+    servoConfigurationUpdated = pyqtSignal(ServoConfiguration)
+    servoConfigurationTimeout = pyqtSignal()
 
     MAX_RETRIES = 5
 
     def __init__(self, servo):
-        super(GetServoLimitsThread, self).__init__()
+        super(GetServoConfigurationThread, self).__init__()
         self._servo = servo
 
     @property
@@ -207,14 +207,14 @@ class GetServoLimitsThread(QThread):
                         raise
                     self.sleep(1)
 
-            self.servoLimitsUpdated.emit(ServoLimits(
+            self.servoConfigurationUpdated.emit(ServoConfiguration(
                 servo_id=self.servo_id,
                 position_limits=position_limits,
                 voltage_limits=voltage_limits,
                 max_temperature=max_temperature,
             ))
         except lewansoul_lx16a.TimeoutError:
-            self.servoLimitsTimeout.emit()
+            self.servoConfigurationTimeout.emit()
 
 
 class ServoMonitorThread(QThread):
@@ -293,8 +293,8 @@ class Terminal(QWidget):
         self.clearLedErrorsButton.clicked.connect(self._on_clear_led_errors_button)
 
         self._servoScanThread = None
-        self._servoLimitsThread = None
-        self._servoMonitorThread = None
+        self._servoReadConfigurationThread = None
+        self._servoStateMonitorThread = None
 
         self.connectionGroup.setEnabled(False)
 
@@ -382,43 +382,44 @@ class Terminal(QWidget):
             self.servo = self.controller.servo(servo_id)
             self.servoGroup.setEnabled(True)
 
-            def servo_limits_updated(details):
+            def servo_configuration_updated(details):
                 self.servoIdLabel.setText(str(details.servo_id))
                 self.positionLimits.setText('%d .. %d' % details.position_limits)
                 self.voltageLimits.setText('%d .. %d' % details.voltage_limits)
                 self.maxTemperature.setText(str(details.max_temperature))
+                self.positionOffset.setText(str(details.position_offset))
 
-                if self._servoMonitorThread:
-                    self._servoMonitorThread.requestInterruption()
+                if self._servoStateMonitorThread:
+                    self._servoStateMonitorThread.requestInterruption()
 
-                self._servoMonitorThread = ServoMonitorThread(self.servo)
-                self._servoMonitorThread.servoStateUpdated.connect(self._update_servo_state)
-                self._servoMonitorThread.start()
+                self._servoStateMonitorThread = ServoMonitorThread(self.servo)
+                self._servoStateMonitorThread.servoStateUpdated.connect(self._update_servo_state)
+                self._servoStateMonitorThread.start()
 
-            def servo_limits_timeout():
+            def servo_configuration_timeout():
                 self._on_servo_selected(None)
                 QMessageBox.warning(self, "Timeout", "Timeout reading servo data")
 
-            if self._servoLimitsThread and self._servoLimitsThread.servo_id != servo_id:
-                self._servoLimitsThread.requestInterruption()
-                self._servoLimitsThread.wait()
-                self._servoLimitsThread = None
+            if self._servoReadConfigurationThread and self._servoReadConfigurationThread.servo_id != servo_id:
+                self._servoReadConfigurationThread.requestInterruption()
+                self._servoReadConfigurationThread.wait()
+                self._servoReadConfigurationThread = None
 
-            if self._servoLimitsThread is None:
-                self._servoLimitsThread = GetServoLimitsThread(self.servo)
-                self._servoLimitsThread.servoLimitsUpdated.connect(servo_limits_updated)
-                self._servoLimitsThread.servoLimitsTimeout.connect(servo_limits_timeout)
-                self._servoLimitsThread.start()
+            if self._servoReadConfigurationThread is None:
+                self._servoReadConfigurationThread = GetServoConfigurationThread(self.servo)
+                self._servoReadConfigurationThread.servoConfigurationUpdated.connect(servo_configuration_updated)
+                self._servoReadConfigurationThread.servoConfigurationTimeout.connect(servo_configuration_timeout)
+                self._servoReadConfigurationThread.start()
         else:
-            if self._servoMonitorThread:
-                self._servoMonitorThread.requestInterruption()
-                self._servoMonitorThread.wait()
-                self._servoMonitorThread = None
+            if self._servoStateMonitorThread:
+                self._servoStateMonitorThread.requestInterruption()
+                self._servoStateMonitorThread.wait()
+                self._servoStateMonitorThread = None
 
-            if self._servoLimitsThread:
-                self._servoLimitsThread.requestInterruption()
-                self._servoLimitsThread.wait()
-                self._servoLimitsThread = None
+            if self._servoReadConfigurationThread:
+                self._servoReadConfigurationThread.requestInterruption()
+                self._servoReadConfigurationThread.wait()
+                self._servoReadConfigurationThread = None
 
             self.servo = None
 
@@ -592,15 +593,15 @@ class Terminal(QWidget):
             self._servoScanThread.wait()
             self._servoScanThread = None
 
-        if self._servoLimitsThread:
-            self._servoLimitsThread.requestInterruption()
-            self._servoLimitsThread.wait()
-            self._servoLimitsThread = None
+        if self._servoReadConfigurationThread:
+            self._servoReadConfigurationThread.requestInterruption()
+            self._servoReadConfigurationThread.wait()
+            self._servoReadConfigurationThread = None
 
-        if self._servoMonitorThread:
-            self._servoMonitorThread.requestInterruption()
-            self._servoMonitorThread.wait()
-            self._servoMonitorThread = None
+        if self._servoStateMonitorThread:
+            self._servoStateMonitorThread.requestInterruption()
+            self._servoStateMonitorThread.wait()
+            self._servoStateMonitorThread = None
 
         if self.connection:
             self.connection.close()

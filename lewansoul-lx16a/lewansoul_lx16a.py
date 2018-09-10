@@ -171,12 +171,12 @@ class ServoController(object):
             lower_byte(time), higher_byte(time),
         )
 
-    def get_move_wait(self, servo_id, timeout=None):
+    def get_prepared_move(self, servo_id, timeout=None):
         """Returns servo position and time tuple"""
         response = self._query(servo_id, SERVO_MOVE_TIME_WAIT_READ, timeout=timeout)
         return word(response[2], response[3]), word(response[4], response[5])
 
-    def set_move_wait(self, servo_id, position, time=0):
+    def move_prepare(self, servo_id, position, time=0):
         position = clamp(0, 1000, position)
         time = clamp(0, 30000, time)
 

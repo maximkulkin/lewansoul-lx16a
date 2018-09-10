@@ -313,6 +313,7 @@ class Terminal(QWidget):
         self.connection = False
         self.selected_servo_id = False
         self.servo = None
+        self._servo_initialization = False
 
         self._available_ports = []
 
@@ -436,6 +437,7 @@ class Terminal(QWidget):
                 self.voltageLimits.setText('%d .. %d' % details.voltage_limits)
                 self.maxTemperature.setText(str(details.max_temperature))
                 self.positionOffset.setText(str(details.position_offset))
+                self._servo_initialization = True
 
                 if self._servoStateMonitorThread:
                     self._servoStateMonitorThread.requestInterruption()
@@ -647,8 +649,14 @@ class Terminal(QWidget):
 
         if self.servoOrMotorModeUi.currentIndex() == 0:
             self.currentPosition.setText(str(servo_state.position))
+            if self._servo_initialization:
+                self.positionSlider.setValue(servo_state.position)
         else:
             self.currentSpeed.setText(str(servo_state.speed))
+            if self._servo_initialization:
+                self.speedSlider.setValue(servo_state.speed)
+
+        self._servo_initialization = False
 
     def closeEvent(self, event):
         if self._servoScanThread:

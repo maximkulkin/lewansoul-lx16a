@@ -461,7 +461,7 @@ class Terminal(QWidget):
             return
 
         dialog = ConfigureVoltageLimitsDialog()
-        dialog.minPosition, dialog.maxPosition = self.servo.get_voltage_limits()
+        dialog.minVoltage, dialog.maxVoltage = self.servo.get_voltage_limits()
         if dialog.exec_():
             self.logger.info('Setting voltage limits to %d..%d' % (dialog.minVoltage, dialog.maxVoltage))
             self.servo.set_voltage_limits(dialog.minVoltage, dialog.maxVoltage)

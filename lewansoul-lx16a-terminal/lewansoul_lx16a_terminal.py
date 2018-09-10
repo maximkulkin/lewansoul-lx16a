@@ -26,7 +26,7 @@ def loadUi(path, widget):
 
 
 ServoConfiguration = namedtuple('ServoConfiguration', [
-    'servo_id', 'position_limits', 'voltage_limits', 'max_temperature',
+    'servo_id', 'position_limits', 'voltage_limits', 'max_temperature', 'position_offset',
 ])
 
 ServoState = namedtuple('ServoState', [
@@ -123,6 +123,39 @@ class ConfigureMaxTemperatureDialog(QDialog):
         self.maxTemperatureEdit.setValue(value)
 
 
+class ConfigurePositionOffsetDialog(QDialog):
+    def __init__(self, servo):
+        super(ConfigurePositionOffsetDialog, self).__init__()
+        self._servo = servo
+
+        loadUi('resources/ConfigurePositionOffset.ui', self)
+
+        self.positionOffsetSlider.valueChanged.connect(self._on_slider_change)
+        self.positionOffsetEdit.valueChanged.connect(self._on_edit_change)
+
+        self.okButton.clicked.connect(self.accept)
+        self.cancelButton.clicked.connect(self.reject)
+
+    def _update_servo(self, deviation):
+        self._servo.set_position_offset(deviation)
+
+    def _on_slider_change(self, position):
+        self.positionOffsetEdit.setValue(position)
+        self._update_servo(position)
+
+    def _on_edit_change(self, position):
+        self.positionOffsetSlider.setValue(position)
+        self._update_servo(position)
+
+    @property
+    def positionOffset(self):
+        return self.positionOffsetEdit.value()
+
+    @positionOffset.setter
+    def positionOffset(self, value):
+        self.positionOffsetEdit.setValue(value)
+
+
 class ServoScanThread(QThread):
     servoFound = pyqtSignal(int)
 
@@ -207,11 +240,25 @@ class GetServoConfigurationThread(QThread):
                         raise
                     self.sleep(1)
 
+            while True:
+                if self.isInterruptionRequested():
+                    return
+
+                try:
+                    position_offset = self._servo.get_position_offset()
+                    break
+                except lewansoul_lx16a.TimeoutError:
+                    retries += 1
+                    if retries >= self.MAX_RETRIES:
+                        raise
+                    self.sleep(1)
+
             self.servoConfigurationUpdated.emit(ServoConfiguration(
                 servo_id=self.servo_id,
                 position_limits=position_limits,
                 voltage_limits=voltage_limits,
                 max_temperature=max_temperature,
+                position_offset=position_offset,
             ))
         except lewansoul_lx16a.TimeoutError:
             self.servoConfigurationTimeout.emit()
@@ -275,6 +322,7 @@ class Terminal(QWidget):
         self.configurePositionLimitsButton.clicked.connect(self._configure_position_limits)
         self.configureVoltageLimitsButton.clicked.connect(self._configure_voltage_limits)
         self.configureMaxTemperatureButton.clicked.connect(self._configure_max_temperature)
+        self.configurePositionOffsetButton.clicked.connect(self._configure_position_offset)
 
         self.portCombo.currentTextChanged.connect(self._on_port_change)
         self.refreshPortsButton.clicked.connect(self._refresh_ports)
@@ -478,6 +526,21 @@ class Terminal(QWidget):
             self.logger.info('Setting max temperature limit to %d' % (dialog.maxTemperature))
             self.servo.set_max_temperature_limit(dialog.maxTemperature)
             self.maxTemperature.setText(str(dialog.maxTemperature))
+
+    def _configure_position_offset(self):
+        if not self.servo:
+            return
+
+        dialog = ConfigurePositionOffsetDialog(self.servo)
+        old_position_offset = self.servo.get_position_offset()
+        dialog.positionOffset = old_position_offset
+        if dialog.exec_():
+            self.logger.info('Setting position offset limit to %d' % (dialog.positionOffset))
+            self.servo.set_position_offset(dialog.positionOffset)
+            self.servo.save_position_offset()
+            self.positionOffset.setText(str(dialog.positionOffset))
+        else:
+            self.servo.set_position_offset(old_position_offset)
 
     def _on_servo_motor_switch(self, value):
         try:

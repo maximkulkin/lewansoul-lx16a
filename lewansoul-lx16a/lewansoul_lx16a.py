@@ -183,23 +183,20 @@ class ServoController(object):
         self._command(servo_id, SERVO_MOVE_STOP)
 
     def get_position_offset(self, servo_id, timeout=None):
-        response = self._query(SERVO_ANGLE_OFFSET_READ, servo_id, timeout=timeout)
+        response = self._query(servo_id, SERVO_ANGLE_OFFSET_READ, timeout=timeout)
         deviation = response[2]
         if deviation > 127:
-            deviation -= 255
+            deviation -= 256
         return deviation
 
     def set_position_offset(self, servo_id, deviation):
         deviation = clamp(-125, 125, deviation)
         if deviation < 0:
-            deviation += 255
-        self._command(servo_id, SERVO_ANGLE_OFFSET_WRITE, deviation)
+            deviation += 256
+        self._command(servo_id, SERVO_ANGLE_OFFSET_ADJUST, deviation)
 
-    def adjust_position_offset(self, servo_id, deviation):
-        deviation = clamp(-125, 125, deviation)
-        if deviation < 0:
-            deviation += 255
-        self._command(servo_id, SERVO_ANGLE_OFFSET_WRITE, deviation)
+    def save_position_offset(self, servo_id):
+        self._command(servo_id, SERVO_ANGLE_OFFSET_WRITE)
 
     def get_position_limits(self, servo_id, timeout=None):
         response = self._query(servo_id, SERVO_ANGLE_LIMIT_READ, timeout=timeout)

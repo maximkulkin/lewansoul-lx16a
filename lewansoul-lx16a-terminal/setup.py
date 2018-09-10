@@ -11,5 +11,5 @@ setup(
     scripts=['scripts/lewansoul_lx16a_terminal'],
     include_package_data=True,
     license='MIT',
-    requires=['lewansoul_lx16a', 'pyserial', 'PyQt5'],
+    install_requires=['lewansoul_lx16a', 'pyserial', 'PyQt5'],
 )

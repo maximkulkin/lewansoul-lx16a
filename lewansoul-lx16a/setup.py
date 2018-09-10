@@ -9,5 +9,5 @@ setup(
     url='https://github.com/maximkulkin/lewansoul-lx16a',
     py_modules=['lewansoul_lx16a'],
     license='MIT',
-    requires=['pyserial'],
+    install_requires=['pyserial'],
 )

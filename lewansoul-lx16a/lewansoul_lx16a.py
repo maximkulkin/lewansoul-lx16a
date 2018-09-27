@@ -142,8 +142,15 @@ class ServoController(object):
                 LOGGER.error('Invalid checksum for packet %s', list(data))
                 continue
 
-            if cmd != command or (servo_id != SERVO_ID_ALL and sid != servo_id):
+            if cmd != command:
+                LOGGER.warning('Got unexpected command %s response %s',
+                               cmd, list(data))
                 continue
+
+            if servo_id != SERVO_ID_ALL and sid != servo_id:
+                LOGGER.warning('Got command response from unexpected servo %s', sid)
+                continue
+
             return [sid, cmd, *params]
 
     def _query(self, servo_id, command, timeout=None):

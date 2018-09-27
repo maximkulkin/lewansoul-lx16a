@@ -495,6 +495,10 @@ class Terminal(QWidget):
             self.servo.set_servo_id(dialog.servoId)
             self.servo = self.controller.servo(dialog.servoId)
             self.servoIdLabel.setText(str(dialog.servoId))
+            item = self.servoList.currentItem()
+            if item is not None:
+                item.setText('Servo ID=%d' % dialog.servoId)
+                item.setData(Qt.UserRole, dialog.servoId)
 
     def _configure_position_limits(self):
         if not self.servo:

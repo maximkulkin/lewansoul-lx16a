@@ -213,7 +213,6 @@ class ServoController(object):
         return word(response[2], response[3]), word(response[4], response[5])
 
     def set_position_limits(self, servo_id, min_position, max_position):
-        print('set_position_limits: %s %s %s' % (servo_id, min_position, max_position))
         min_position = clamp(0, 1000, min_position)
         max_position = clamp(0, 1000, max_position)
         self._command(
@@ -277,7 +276,6 @@ class ServoController(object):
         )
 
     def set_motor_mode(self, servo_id, speed=0):
-        print('setting motor speed to %d' % speed)
         speed = clamp(-1000, 1000, speed)
         if speed < 0:
             speed += 65536

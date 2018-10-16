@@ -57,10 +57,6 @@ class ServoController(object):
     def _command(self, command, *params):
         length = 2 + len(params)
         with self._lock:
-            data = self._serial.read_all()
-            if data:
-                LOGGER.debug('Got this while preparing to send: %s', hex_data(data))
-
             LOGGER.debug('Sending servo control packet: %s', hex_data([
                 0x55, 0x55, length, command, *params
             ]))

@@ -7,7 +7,7 @@ setup(
     author='Maxim Kulkin',
     author_email='maxim.kulkin@gmail.com',
     url='https://github.com/maximkulkin/lewansoul-lx16a',
-    py_modules=['lewansoul_lx16a'],
+    py_modules=['lewansoul_lx16a', 'lewansoul_lx16a_controller'],
     license='MIT',
     install_requires=['pyserial'],
 )

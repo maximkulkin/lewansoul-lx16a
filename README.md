@@ -22,7 +22,7 @@ Just install both packages to use them:
 ( cd lewansoul-lx16a-terminal && python setup.py install )
 ```
 
-To launch GUI use `lewansoul-lx16a-terminal` command.
+To launch GUI use `lewansoul_lx16a_terminal` command.
 
 Code example
 ============

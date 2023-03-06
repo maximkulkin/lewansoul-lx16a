@@ -44,5 +44,5 @@ setup(
         'Programming Language :: Python :: Implementation :: CPython',
         'Programming Language :: Python :: Implementation :: PyPy',
     ],
-    install_requires=['lewansoul_lx16a', 'pyserial', 'PyQt5'],
+    install_requires=['lewansoul_lx16a', 'pyserial', 'PyQt6'],
 )

@@ -8,9 +8,9 @@ Website: https://github.com/maximkulkin/lewansoul-lx16a
 
 import sys
 
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtWidgets import (QWidget, QApplication, QDialog, QMessageBox, QListWidgetItem)
-from PyQt5.uic import loadUi as _loadUi
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt6.QtWidgets import (QWidget, QApplication, QDialog, QMessageBox, QListWidgetItem)
+from PyQt6.uic import loadUi as _loadUi
 
 from collections import namedtuple
 import pkg_resources
@@ -407,7 +407,7 @@ class Terminal(QWidget):
 
         def servoFound(servoId):
             item = QListWidgetItem('Servo ID=%s' % servoId)
-            item.setData(Qt.UserRole, servoId)
+            item.setData(Qt.ItemDataRole.UserRole, servoId)
             self.servoList.addItem(item)
 
         if not self._servoScanThread:
@@ -425,7 +425,7 @@ class Terminal(QWidget):
     def _on_servo_selected(self, item):
         servo_id = None
         if item is not None:
-            servo_id = item.data(Qt.UserRole)
+            servo_id = item.data(Qt.ItemDataRole.UserRole)
 
         if servo_id:
             self.servo = self.controller.servo(servo_id)
@@ -490,7 +490,7 @@ class Terminal(QWidget):
 
         dialog = ConfigureIdDialog()
         dialog.servoId = self.servo.get_servo_id()
-        if dialog.exec_():
+        if dialog.exec():
             self.logger.info('Setting servo ID to %d' % dialog.servoId)
             self.servo.set_servo_id(dialog.servoId)
             self.servo = self.controller.servo(dialog.servoId)
@@ -498,7 +498,7 @@ class Terminal(QWidget):
             item = self.servoList.currentItem()
             if item is not None:
                 item.setText('Servo ID=%d' % dialog.servoId)
-                item.setData(Qt.UserRole, dialog.servoId)
+                item.setData(Qt.ItemDataRole.UserRole, dialog.servoId)
 
     def _configure_position_limits(self):
         if not self.servo:
@@ -506,7 +506,7 @@ class Terminal(QWidget):
 
         dialog = ConfigurePositionLimitsDialog()
         dialog.minPosition, dialog.maxPosition = self.servo.get_position_limits()
-        if dialog.exec_():
+        if dialog.exec():
             self.logger.info('Setting position limits to %d..%d' % (dialog.minPosition, dialog.maxPosition))
             self.servo.set_position_limits(dialog.minPosition, dialog.maxPosition)
             self.positionLimits.setText('%d .. %d' % (dialog.minPosition, dialog.maxPosition))
@@ -517,7 +517,7 @@ class Terminal(QWidget):
 
         dialog = ConfigureVoltageLimitsDialog()
         dialog.minVoltage, dialog.maxVoltage = self.servo.get_voltage_limits()
-        if dialog.exec_():
+        if dialog.exec():
             self.logger.info('Setting voltage limits to %d..%d' % (dialog.minVoltage, dialog.maxVoltage))
             self.servo.set_voltage_limits(dialog.minVoltage, dialog.maxVoltage)
             self.voltageLimits.setText('%d .. %d' % (dialog.minVoltage, dialog.maxVoltage))
@@ -528,7 +528,7 @@ class Terminal(QWidget):
 
         dialog = ConfigureMaxTemperatureDialog()
         dialog.maxTemperature = self.servo.get_max_temperature_limit()
-        if dialog.exec_():
+        if dialog.exec():
             self.logger.info('Setting max temperature limit to %d' % (dialog.maxTemperature))
             self.servo.set_max_temperature_limit(dialog.maxTemperature)
             self.maxTemperature.setText(str(dialog.maxTemperature))
@@ -540,7 +540,7 @@ class Terminal(QWidget):
         dialog = ConfigurePositionOffsetDialog(self.servo)
         old_position_offset = self.servo.get_position_offset()
         dialog.positionOffset = old_position_offset
-        if dialog.exec_():
+        if dialog.exec():
             self.logger.info('Setting position offset limit to %d' % (dialog.positionOffset))
             self.servo.set_position_offset(dialog.positionOffset)
             self.servo.save_position_offset()
@@ -688,7 +688,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
     app = QApplication(sys.argv)
     terminal = Terminal()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == '__main__':
